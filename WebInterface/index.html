@@ -1,0 +1,130 @@
+<html>
+
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <title>ShowerLessWater</title>
+</head>
+
+
+<body style="width:100vw;height:100vh;background-color:#1C6BA0;font-family:Helvetica, sans-serif;font-size:100%">
+    <div style="display:inline-block">
+        <img src="./img/shower.svg" style="width:50vw;margin:10vh auto auto auto">
+    </div>
+    <div style="display:inline-block">
+        <img id="bleLogo" src="./img/bluetooth.svg" onClick="onStartButtonClick()" style="width:25vw;margin:10vh auto auto auto">
+        <p id="bleStatus" style="color:white;font-size:2em;text-align:center">Click to connect</p>
+    </div>
+
+    <div id="showerStatus" style="position:absolute;display:none;top:12vh;left:55vw;font-size:3em;color:white">
+        <div id="noShower" style="display: none">
+            No shower in progress
+        </div>
+        <div id="activeShower" style="display: none">
+            Water: <span id="showerGallons">0</span> gallons
+            <br> Duration: <span id="showerDuration">0</span> seconds
+            <!--<br> Temperature: <span id="showerTemperature">0</span> fahrenheit-->
+        </div>
+    </div>
+</body>
+
+<script>
+    var myCharacteristic;
+
+    function onStartButtonClick() {
+        let serviceUuid = "battery_service";
+        if (serviceUuid.startsWith('0x')) {
+            serviceUuid = parseInt(serviceUuid);
+        }
+
+        let characteristicUuid = "battery_level";
+        if (characteristicUuid.startsWith('0x')) {
+            characteristicUuid = parseInt(characteristicUuid);
+        }
+
+        console.log('Requesting Bluetooth Device...');
+        navigator.bluetooth.requestDevice({ filters: [{ services: [serviceUuid] }] })
+            .then(device => {
+                console.log('Connecting to GATT Server...');
+                $("#bleStatus").html("Connecting...");
+                return device.gatt.connect();
+            })
+            .then(server => {
+                console.log('Getting Service...');
+                return server.getPrimaryService(serviceUuid);
+                $("#bleStatus").html("Getting service...");
+            })
+            .then(service => {
+                console.log('Getting Characteristic...');
+                $("#bleStatus").html("Getting characteristics...");
+                return service.getCharacteristic(characteristicUuid);
+            })
+            .then(characteristic => {
+                myCharacteristic = characteristic;
+                return myCharacteristic.startNotifications().then(_ => {
+                    console.log('> Notifications started');
+                    $("#bleStatus").html("Connected");
+                    $("#bleLogo").fadeOut(1000);
+
+                    $("#showerStatus").fadeIn(750);
+
+                    updateShowerStatus(255);
+                    myCharacteristic.addEventListener('characteristicvaluechanged',
+                        handleNotifications);
+                });
+            })
+            .catch(error => {
+                console.log('Argh! ' + error);
+            });
+    }
+
+    function onStopButtonClick() {
+        if (myCharacteristic) {
+            myCharacteristic.stopNotifications()
+                .then(_ => {
+                    console.log('> Notifications stopped');
+                    myCharacteristic.removeEventListener('characteristicvaluechanged',
+                        handleNotifications);
+                })
+                .catch(error => {
+                    console.log('Argh! ' + error);
+                });
+        }
+    }
+
+    function updateShowerStatus(value) {
+        let sDuration = value;
+        if (sDuration < 255) {
+            $("#noShower").hide();
+            $("#activeShower").show();
+            $("#showerDuration").html(sDuration);
+            $("#showerGallons").html((sDuration * 0.2833 * 0.26).toFixed(1));
+        } else {
+            $("#noShower").show();
+            $("#activeShower").hide();
+        }
+        /*let sTemperature = value.getUint8(0);
+        if(sTemperature<255)
+        {
+            $("#showerTemperature").html(sTemperature);
+        }*/
+    }
+
+    function handleNotifications(event) {
+        let value = event.target.value;
+        let a = [];
+
+        updateShowerStatus(value.getUint8(0));
+        // Convert raw data bytes to hex values just for the sake of showing something.
+        // In the "real" world, you'd use data.getUint8, data.getUint16 or even
+        // TextDecoder to process raw data bytes.
+
+        console.log("BLE value0: " + value.getUint8(0));
+        /*for (let i = 0; i < value.byteLength; i++) {
+            a.push('0x' + ('00' + value.getUint8(i).toString(16)).slice(-2));
+        }
+        console.log('> ' + a.join(' '));*/
+    }
+
+</script>
+
+</html>
